@@ -1,0 +1,57 @@
+
+name: Atualizar lista Clouddy
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 6 * * *"
+
+permissions:
+  contents: write
+
+jobs:
+  atualizar:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Baixar listas
+        run: |
+          curl -L --fail -o brasil.m3u \
+            https://iptv-org.github.io/iptv/countries/br.m3u
+          curl -L --fail -o global.m3u \
+            https://iptv-org.github.io/iptv/index.m3u
+
+      - name: Combinar listas
+        run: |
+          python3 - <<'PY'
+          def ler(nome):
+              with open(nome, encoding="utf-8") as f:
+                  return f.read().splitlines()
+
+          brasil = ler("brasil.m3u")
+          global_ = ler("global.m3u")
+
+          saida = ["#EXTM3U"]
+          urls = set()
+
+          for linha in brasil + global_:
+              if linha.startswith("#EXTM3U"):
+                  continue
+              if linha.startswith("#EXTINF"):
+                  saida.append(linha)
+              elif linha.startswith("http"):
+                  if linha not in urls:
+                      saida.append(linha)
+                      urls.add(linha)
+
+          with open("lista.m3u", "w", encoding="utf-8") as f:
+              f.write("\n".join(saida) + "\n")
+          PY
+
+      - name: Salvar lista no GitHub
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git add lista.m3u
+          git commit -m "Atualizar lista M3U" || exit 0
+          git push
